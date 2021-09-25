@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Depends, Response, status, HTTPException
-from typing import Optional # For optional parameters
-from schemas import Blog
+from typing import Optional, List # For optional parameters
+from schemas import Blog, User, ShowBlog, ShowList, UserProfile
 import models
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
+
+from hashing import Hash
 
 app = FastAPI()
 
@@ -13,6 +15,7 @@ def get_db():
     db = SessionLocal()
 
     try:
+        print("Accessing DB...")
         yield db
     finally:
         db.close()
@@ -33,7 +36,7 @@ async def about():
         }
     }
 
-@app.get('/blog/')
+@app.get('/blog/', tags=['blog'])
 async def index(limit: int=10, published: bool = True, sort: Optional[str] = None, db: Session = Depends(get_db)):
     lst = db.query(models.Blog).all()
     if sort == 'ascending':
@@ -45,12 +48,12 @@ async def index(limit: int=10, published: bool = True, sort: Optional[str] = Non
     else:
         return {"data": {"blog_id": "all unpublished stuff"}}
 
-@app.get('/blog/all')
+@app.get('/blog/all', response_model = List[ShowList], tags=['blog'])
 async def all(db: Session = Depends(get_db)):
     blogs = db.query(models.Blog).all()
     return blogs
 
-@app.get('/blog/{id}', status_code=status.HTTP_200_OK)
+@app.get('/blog/{id}', status_code=status.HTTP_200_OK, response_model=ShowBlog, tags=['blog'])
 async def get(id: int,  response: Response, db: Session = Depends(get_db)):
     entry = db.query(models.Blog).filter(models.Blog.id == id).first()
     # print(f"\n\n{entry}\n\n")
@@ -58,7 +61,7 @@ async def get(id: int,  response: Response, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Not found")
     return entry
 
-@app.get('/blog/{id}/{action}')
+@app.get('/blog/{id}/{action}', response_model=ShowBlog, tags=['blog'])
 async def get(id: int, action: str):
     if action == "comments":
         return {
@@ -72,7 +75,7 @@ async def get(id: int, action: str):
                 }
             }
 
-@app.post('/blog/', status_code = status.HTTP_201_CREATED)
+@app.post('/blog/', status_code = status.HTTP_201_CREATED, tags=['blog'])
 async def createBlog(blog: Blog, response: Response, db: Session = Depends(get_db)):
     new_blog = models.Blog(title=blog.title, description=blog.description)
     db.add(new_blog)
@@ -82,7 +85,7 @@ async def createBlog(blog: Blog, response: Response, db: Session = Depends(get_d
     # return new_blog
     return {"details": "OK"}
 
-@app.put('/blog/{id}', status_code = status.HTTP_202_ACCEPTED)
+@app.put('/blog/{id}', status_code = status.HTTP_202_ACCEPTED, response_model=ShowBlog, tags=['blog'])
 async def editPost(id: int, blog: Blog, db: Session = Depends(get_db)):
     entry = db.query(models.Blog).filter(models.Blog.id == id).first()
 
@@ -93,7 +96,7 @@ async def editPost(id: int, blog: Blog, db: Session = Depends(get_db)):
     db.commit()
     return {"response": "OK"}
 
-@app.delete('/blog/{id}', status_code=status.HTTP_200_OK)
+@app.delete('/blog/{id}', status_code=status.HTTP_200_OK, tags=['blog'])
 async def deleteEntry(id: int, response: Response, db: Session = Depends(get_db)):
     entry = db.query(models.Blog).filter(models.Blog.id == id).first()
 
@@ -104,6 +107,26 @@ async def deleteEntry(id: int, response: Response, db: Session = Depends(get_db)
     db.commit()
 
     return {"details": "OK"}
+
+#################################### Users ####################################
+
+@app.post('/user', tags=['users'])
+def createUser(request: User, db: Session = Depends(get_db)):
+    hashedPassword = Hash().bcrypt(request.password)
+    new_user = models.User(name=request.name, username=request.username, email=request.email, password=hashedPassword)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+@app.get('/user/{username}', response_model = UserProfile, tags=['users'])
+def getByUsername(username: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == username).first()
+ 
+    return user
+
+#################################### Uvicorn deployment ####################################
 
 if __name__ == "__main__":
     import uvicorn
