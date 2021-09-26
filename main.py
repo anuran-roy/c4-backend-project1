@@ -111,7 +111,7 @@ async def deleteEntry(id: int, response: Response, db: Session = Depends(get_db)
 #################################### Users ####################################
 
 @app.post('/user', tags=['users'])
-def createUser(request: User, db: Session = Depends(get_db)):
+async def createUser(request: User, db: Session = Depends(get_db)):
     hashedPassword = Hash().bcrypt(request.password)
     new_user = models.User(name=request.name, username=request.username, email=request.email, password=hashedPassword)
     db.add(new_user)
@@ -121,7 +121,7 @@ def createUser(request: User, db: Session = Depends(get_db)):
     return new_user
 
 @app.get('/user/{username}', response_model = UserProfile, tags=['users'])
-def getByUsername(username: str, db: Session = Depends(get_db)):
+async def getByUsername(username: str, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == username).first()
  
     return user
